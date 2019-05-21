@@ -34,6 +34,7 @@ class RpcBase(DefaultOptionsMixin):
     def __init__(self, socket, codec, services=None, **options):
         assert (hasattr(services, '_request_handlers') and
                 hasattr(services, '_notification_handlers'))
+        self.service_name = None
         for key, value in options.items():
             setattr(self, key, value)
         self.definitions = Definitions(self.protocol,
@@ -42,6 +43,11 @@ class RpcBase(DefaultOptionsMixin):
         self.services = services
         self.socket_queue = SocketQueue(socket, codec, self.threading_model)
         self.dispatcher = Dispatcher(self)
+
+    def _composed_name(self, method_name):
+        if self.service_name is None:
+            return method_name
+        return '.'.join((self.service_name, method_name))
 
     @property
     def is_closed(self):
@@ -88,7 +94,7 @@ class RpcBase(DefaultOptionsMixin):
             with ResultScope(self.dispatcher, msg_id) as promise:
                 self.socket_queue.put(
                     self.definitions.request(
-                        msg_id, method_name, args, kwargs))
+                        msg_id, self._composed_name(method_name), args, kwargs))
                 result = promise.wait(timeout)
         except RuntimeError:
             raise ResponseTimeout(u'Waiting response expired.')
@@ -110,7 +116,7 @@ class RpcBase(DefaultOptionsMixin):
           be used simultaneously in a single call.
         '''
         self.socket_queue.put(
-            self.definitions.notification(method_name, args, kwargs))
+            self.definitions.notification(self._composed_name(method_name), args, kwargs))
 
     def get_peer_proxy(self, requests=None, notifications=None, timeout=None):
         '''
